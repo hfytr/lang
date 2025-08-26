@@ -233,6 +233,7 @@ fn get_firsts(rules: &Vec<Vec<Vec<usize>>>) -> Vec<USizeSet> {
         for dep in rules[cur]
             .iter()
             .filter_map(|prod| prod.first().map(|x| *x))
+            .filter(|dep| *dep != cur)
         {
             if !vis[dep] {
                 helper(firsts, vis, rules, dep);
