@@ -199,6 +199,7 @@ parser::parser! {
         TermL,
         TermL ExprList |_, _, elist| elist,
         Expr TermL ExprList |state, e, _, elist| expr_list(state, e, elist)
+        Expr TermL |state, e, _| e
     ),
 
     Expr => Rule(IdentifierL),

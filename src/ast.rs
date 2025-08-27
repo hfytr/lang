@@ -3,7 +3,7 @@ use std::{
     cmp::Ordering, fmt::Display, ops::{Index, IndexMut}
 };
 
-use crate::{ast, parser::NodeKind};
+use crate::parser::NodeKind;
 
 #[derive(Debug, Default)]
 pub struct AST {

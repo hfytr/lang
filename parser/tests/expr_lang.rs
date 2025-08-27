@@ -68,28 +68,28 @@ parser::parser! {
     State(()),
     Output(Node),
     Kind(NodeKind),
-    GenertedFn(create_parsing_engine),
-    Update(" *" |_, _| {}),
+    GeneratedFn(create_parsing_engine),
     Expr => Rule(
-        Term Plus Expr |term, _, expr| expr_node(term, expr),
-        Term |term| Node::Expr(vec![Box::new(term)])
+        Term Plus Expr |_, term, _, expr| expr_node(term, expr),
+        Term |_, term| Node::Expr(vec![Box::new(term)])
     ),
     Term => Rule(
-        Factor Multiply Term |factor, _, term| term_node(factor, term),
-        Factor |factor| Node::Term(vec![Box::new(factor)])
+        Factor Multiply Term |_, factor, _, term| term_node(factor, term),
+        Factor |_, factor| Node::Term(vec![Box::new(factor)])
     ),
     Factor => Rule(
         Literal,
-        LeftParen Expr RightParen |_, expr, _| expr
+        LeftParen Expr RightParen |_, _, expr, _| expr
     ),
+    _ => Regex(" *" |_, _| None),
     Literal => Regex("[0-9]*" |_, text: &str| {
-        (Node::Literal(text.parse().unwrap()), NodeKind::Literal as usize)
+        Some((Node::Literal(text.parse().unwrap()), NodeKind::Literal as usize))
     }),
-    Multiply => Literal("*" |_, _| (Node::Multiply, NodeKind::Multiply as usize)),
-    Multiply => Literal("x" |_, _| (Node::Multiply, NodeKind::Multiply as usize)),
-    Plus => Literal("+" |_, _| (Node::Plus, NodeKind::Plus as usize)),
-    LeftParen => Literal("(" |_, _| (Node::LeftParen, NodeKind::LeftParen as usize)),
-    RightParen => Literal(")" |_, _| (Node::RightParen, NodeKind::RightParen as usize)),
+    Multiply => Literal("*" |_, _| Some((Node::Multiply, NodeKind::Multiply as usize))),
+    Multiply => Literal("x" |_, _| Some((Node::Multiply, NodeKind::Multiply as usize))),
+    Plus => Literal("+" |_, _| Some((Node::Plus, NodeKind::Plus as usize))),
+    LeftParen => Literal("(" |_, _| Some((Node::LeftParen, NodeKind::LeftParen as usize))),
+    RightParen => Literal(")" |_, _| Some((Node::RightParen, NodeKind::RightParen as usize))),
 }
 
 #[test]
