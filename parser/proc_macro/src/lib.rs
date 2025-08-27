@@ -3,7 +3,7 @@ mod lexer;
 use crate::lexer::{process_productions, Production};
 use proc_macro2::{Ident, Punct, Spacing, Span, TokenStream};
 use quote::{quote, quote_spanned, ToTokens, TokenStreamExt};
-use shared_structs::{DynParseTable, DynTrie, RegexDFA};
+use shared_structs::{ParseTable, Trie, RegexDFA};
 use std::{collections::BTreeSet, process::exit};
 use syn::{
     parse::{discouraged::Speculative, Parse},
@@ -77,10 +77,9 @@ struct MacroBody {
     kind_def: TokenStream,
     kind_type: Type,
     regex: RegexDFA,
-    trie: DynTrie,
+    trie: Trie,
     productions: Vec<Production>,
-    parser: DynParseTable,
-    num_tokens: usize,
+    parser: ParseTable,
     is_token: Vec<bool>,
 }
 
@@ -128,7 +127,7 @@ impl Parse for MacroBody {
             input.parse::<Token![,]>().unwrap();
         }
 
-        let (regex, trie, parser, num_tokens, is_token) = process_productions(&productions);
+        let (regex, trie, parser, is_token) = process_productions(&productions);
         let tot_span = input.span();
         let out_type = out_type.ok_or(Error::new(tot_span, ERR_NO_OUT_TYPE))?;
         let state_type = state_type.ok_or(Error::new(tot_span, ERR_STATE_NOT_SPECIFIED))?;
@@ -146,7 +145,6 @@ impl Parse for MacroBody {
             productions,
             trie,
             parser,
-            num_tokens,
             is_token,
         });
         result
@@ -164,14 +162,9 @@ fn parser2(input: TokenStream) -> Result<TokenStream, Error> {
         trie,
         productions,
         parser,
-        num_tokens,
         is_token,
     } = syn::parse2(input)?;
 
-    let num_literals = trie.0.len();
-    let num_lex_states = regex.fin.len();
-    let num_parse_states = parser.actions.len();
-    let num_rules = parser.rule_lens.len();
     let mut is_token_toks = TokenStream::new();
     is_token_toks.append_separated(is_token.iter(), Punct::new(',', Spacing::Alone));
     is_token_toks.append_all(quote! { , true });
@@ -215,7 +208,6 @@ fn parser2(input: TokenStream) -> Result<TokenStream, Error> {
     let mut error_callback_names = vec![];
     let mut rule_callback_defs = TokenStream::new();
     let mut rule_callback_names = vec![];
-    let mut num_terminals = 0usize;
     let mut num_generated = 0;
     let mut cur_rule = 0;
 
@@ -230,7 +222,6 @@ fn parser2(input: TokenStream) -> Result<TokenStream, Error> {
                         user_callback(state, s)
                     }
                 };
-                num_terminals += 1;
                 num_generated += 1;
                 lexeme_callback_defs.append_all(callback);
                 lexeme_callback_names.push(callback_name);
@@ -264,7 +255,6 @@ fn parser2(input: TokenStream) -> Result<TokenStream, Error> {
             }
         }
     }
-    let num_error_callbacks = error_callback_names.len();
 
     let mut lexeme_callbacks = TokenStream::new();
     lexeme_callbacks.append_separated(
@@ -328,13 +318,6 @@ fn parser2(input: TokenStream) -> Result<TokenStream, Error> {
             Result<parser::Engine<
                 #out_type,
                 #state_type,
-                #num_terminals,
-                #num_tokens,
-                #num_literals,
-                #num_lex_states,
-                #num_parse_states,
-                #num_rules,
-                #num_error_callbacks
                 >,
                 &'static str
             >
@@ -346,10 +329,10 @@ fn parser2(input: TokenStream) -> Result<TokenStream, Error> {
                 #parser,
                 #regex,
                 #trie,
-                [#lexeme_callbacks],
-                [#error_callbacks],
-                [#rule_callbacks],
-                [#is_token_toks],
+                vec![#lexeme_callbacks],
+                vec![#error_callbacks],
+                vec![#rule_callbacks],
+                vec![#is_token_toks],
             )
         }
     })

@@ -45,14 +45,16 @@ impl ToTokens for TrieNode {
     }
 }
 
-pub struct Trie<const NUM_LITERALS: usize>(pub [TrieNode; NUM_LITERALS]);
 
-impl<const NUM_LITERALS: usize> Trie<NUM_LITERALS> {
-    pub fn from_raw(trie_raw: [(Option<usize>, [Option<usize>; 256]); NUM_LITERALS]) -> Self {
-        let mut nodes = [TrieNode {
+#[derive(Debug)]
+pub struct Trie(pub Vec<TrieNode>);
+
+impl Trie {
+    pub fn from_raw(trie_raw: Vec<(Option<usize>, [Option<usize>; 256])>) -> Self {
+        let mut nodes = vec![TrieNode {
             fin: None,
             children: [None; 256],
-        }; NUM_LITERALS];
+        }; trie_raw.len()];
         for (i, (fin, children)) in trie_raw.into_iter().enumerate() {
             nodes[i] = TrieNode { fin, children };
         }
@@ -76,12 +78,7 @@ impl<const NUM_LITERALS: usize> Trie<NUM_LITERALS> {
         }
         (cur_match, match_len)
     }
-}
 
-#[derive(Debug)]
-pub struct DynTrie(pub Vec<TrieNode>);
-
-impl DynTrie {
     pub fn insert(&mut self, s: &[u8], x: usize) {
         let mut cur = 0;
         for c in s {
@@ -98,17 +95,17 @@ impl DynTrie {
     }
 }
 
-impl<const N: usize> From<[TrieNode; N]> for DynTrie {
+impl<const N: usize> From<[TrieNode; N]> for Trie {
     fn from(a: [TrieNode; N]) -> Self {
         Self(a.into_iter().collect())
     }
 }
 
-impl ToTokens for DynTrie {
+impl ToTokens for Trie {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let mut result = TokenStream::new();
         result.append_separated(self.0.iter(), Punct::new(',', Spacing::Alone));
-        tokens.append_all(quote! { [#result] });
+        tokens.append_all(quote! { vec![#result] });
     }
 }
 
@@ -134,18 +131,18 @@ impl ToTokens for Empty {
 }
 
 #[derive(Clone)]
-pub struct RegexTable<const NUM_STATES: usize> {
-    pub trans: [[Option<usize>; 256]; NUM_STATES],
-    pub fin: [Option<usize>; NUM_STATES],
+pub struct RegexTable {
+    pub trans: Vec<[Option<usize>; 256]>,
+    pub fin: Vec<Option<usize>>,
 }
 
-impl<const NUM_STATES: usize> Debug for RegexTable<NUM_STATES> {
+impl Debug for RegexTable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         RegexDFA::from_raw(self.clone()).fmt(f)
     }
 }
 
-impl<const NUM_STATES: usize> RegexTable<NUM_STATES> {
+impl RegexTable {
     pub fn query_longest(&self, s: &[u8]) -> (Option<usize>, usize) {
         let mut cur_match = None;
         let mut match_len = 0;
@@ -259,7 +256,7 @@ impl RegexDFA {
         res
     }
 
-    pub fn from_raw<const N: usize>(raw: RegexTable<N>) -> Self {
+    pub fn from_raw(raw: RegexTable) -> Self {
         Self {
             states: IndexableMap::from([]),
             trans: raw.trans.to_vec(),
@@ -298,7 +295,7 @@ impl ToTokens for RegexDFA {
             &self.fin,
         );
         tokens.append_all(quote! {
-            ([#trans_inner], [#fin_inner])
+            (vec![#trans_inner], vec![#fin_inner])
         });
     }
 }

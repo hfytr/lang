@@ -3,8 +3,8 @@ mod parser;
 mod sets;
 
 use core::panic;
-pub use lexer::{DynTrie, RegexDFA, Trie, TrieNode};
-pub use parser::{Conflict, DynParseTable, ParseAction, ParseTable};
+pub use lexer::{RegexDFA, Trie, TrieNode};
+pub use parser::{Conflict, ParseAction, ParseTable};
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens};
 use std::fmt::Debug;
@@ -48,88 +48,50 @@ pub struct Lexemes<
     'c,
     N: Clone,
     S,
-    const NUM_TERMINALS: usize,
-    const NUM_TOKENS: usize,
-    const NUM_LITERALS: usize,
-    const NUM_LEX_STATES: usize,
-    const NUM_PARSE_STATES: usize,
-    const NUM_RULES: usize,
-    const NUM_ERROR_CALLBACKS: usize,
 > {
     engine: &'a Engine<
         N,
         S,
-        NUM_TERMINALS,
-        NUM_TOKENS,
-        NUM_LITERALS,
-        NUM_LEX_STATES,
-        NUM_PARSE_STATES,
-        NUM_RULES,
-        NUM_ERROR_CALLBACKS,
     >,
     pub state: &'b mut S,
     pub s: &'c str,
 }
 
-pub struct Engine<
-    N: Clone,
-    S,
-    const NUM_TERMINALS: usize,
-    const NUM_TOKENS: usize,
-    const NUM_LITERALS: usize,
-    const NUM_LEX_STATES: usize,
-    const NUM_PARSE_STATES: usize,
-    const NUM_RULES: usize,
-    const NUM_ERRORS: usize,
-> {
-    parser: ParseTable<NUM_RULES, NUM_PARSE_STATES, NUM_TOKENS>,
-    trie: Trie<NUM_LITERALS>,
-    lexer: RegexTable<NUM_LEX_STATES>,
-    lexeme_callbacks: [fn(&mut S, &str) -> Option<(N, usize)>; NUM_TERMINALS],
-    error_callbacks: [fn(&mut S, Vec<N>) -> N; NUM_ERRORS],
-    rule_callbacks: [fn(&mut S, &mut Vec<N>) -> N; NUM_RULES],
-    is_terminal: [bool; NUM_TOKENS],
+pub struct Engine<N: Clone, S> {
+    parser: ParseTable,
+    trie: Trie,
+    lexer: RegexTable,
+    lexeme_callbacks: Vec<fn(&mut S, &str) -> Option<(N, usize)>>,
+    error_callbacks: Vec<fn(&mut S, Vec<N>) -> N>,
+    rule_callbacks: Vec<fn(&mut S, &mut Vec<N>) -> N>,
+    is_terminal: Vec<bool>,
 }
 
 impl<
         N: Clone + Debug,
         S,
-        const NUM_TERMINALS: usize,
-        const NUM_TOKENS: usize,
-        const NUM_LITERALS: usize,
-        const NUM_LEX_STATES: usize,
-        const NUM_PARSE_STATES: usize,
-        const NUM_RULES: usize,
-        const NUM_ERROR_CALLBACKS: usize,
     >
     Engine<
         N,
         S,
-        NUM_TERMINALS,
-        NUM_TOKENS,
-        NUM_LITERALS,
-        NUM_LEX_STATES,
-        NUM_PARSE_STATES,
-        NUM_RULES,
-        NUM_ERROR_CALLBACKS,
     >
 {
     pub fn from_raw(
         parser: (
-            [[(usize, usize); NUM_TOKENS]; NUM_PARSE_STATES],
-            [(usize, usize); NUM_RULES],
-            [Option<(usize, usize)>; NUM_PARSE_STATES],
-            [[bool; NUM_TOKENS]; NUM_TOKENS],
+            Vec<Vec<(usize, usize)>>,
+            Vec<(usize, usize)>,
+            Vec<Option<(usize, usize)>>,
+            Vec<Vec<bool>>,
         ),
         lexer: (
-            [[Option<usize>; 256]; NUM_LEX_STATES],
-            [Option<usize>; NUM_LEX_STATES],
+            Vec<[Option<usize>; 256]>,
+            Vec<Option<usize>>,
         ),
-        trie: [(Option<usize>, [Option<usize>; 256]); NUM_LITERALS],
-        lexeme_callbacks: [fn(&mut S, &str) -> Option<(N, usize)>; NUM_TERMINALS],
-        error_callbacks: [fn(&mut S, Vec<N>) -> N; NUM_ERROR_CALLBACKS],
-        rule_callbacks: [fn(&mut S, &mut Vec<N>) -> N; NUM_RULES],
-        is_terminal: [bool; NUM_TOKENS],
+        trie: Vec<(Option<usize>, [Option<usize>; 256])>,
+        lexeme_callbacks: Vec<fn(&mut S, &str) -> Option<(N, usize)>>,
+        error_callbacks: Vec<fn(&mut S, Vec<N>) -> N>,
+        rule_callbacks: Vec<fn(&mut S, &mut Vec<N>) -> N>,
+        is_terminal: Vec<bool>,
     ) -> Result<Self, &'static str> {
         Ok(Self {
             parser: ParseTable::from_raw(parser.0, parser.1, parser.2, parser.3)?,
@@ -245,7 +207,7 @@ impl<
         let mut cur_lexeme = None;
         while cur_lexeme.is_none() {
             if s.is_empty() {
-                return Ok((None, NUM_TOKENS - 1));
+                return Ok((None, self.parser.actions[0].len() - 1));
             }
             let bytes = &s.as_bytes();
             let (trie_match, trie_len) = self.trie.query_longest(bytes);
@@ -287,13 +249,6 @@ impl<
         'c,
         N,
         S,
-        NUM_TERMINALS,
-        NUM_TOKENS,
-        NUM_LITERALS,
-        NUM_LEX_STATES,
-        NUM_PARSE_STATES,
-        NUM_RULES,
-        NUM_ERROR_CALLBACKS,
     > {
         Lexemes {
             engine: self,
@@ -309,13 +264,6 @@ impl<
         'c,
         N: Clone + Debug,
         S,
-        const NUM_TERMINALS: usize,
-        const NUM_TOKENS: usize,
-        const NUM_LITERALS: usize,
-        const NUM_LEX_STATES: usize,
-        const NUM_PARSE_STATES: usize,
-        const NUM_RULES: usize,
-        const NUM_ERROR_CALLBACKS: usize,
     > Iterator
     for Lexemes<
         'a,
@@ -323,13 +271,6 @@ impl<
         'c,
         N,
         S,
-        NUM_TERMINALS,
-        NUM_TOKENS,
-        NUM_LITERALS,
-        NUM_LEX_STATES,
-        NUM_PARSE_STATES,
-        NUM_RULES,
-        NUM_ERROR_CALLBACKS,
     >
 {
     type Item = Result<(N, usize), &'static str>;

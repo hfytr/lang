@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use shared_structs::{Conflict, DynParseTable, DynTrie, RegexDFA, TrieNode};
+use shared_structs::{Conflict, ParseTable, Trie, RegexDFA, TrieNode};
 use syn::{
     parenthesized,
     parse::{Parse, ParseStream},
@@ -142,8 +142,8 @@ impl Parse for Production {
 
 pub fn process_productions(
     productions: &Vec<Production>,
-) -> (RegexDFA, DynTrie, DynParseTable, usize, Vec<bool>) {
-    let mut trie = DynTrie(vec![TrieNode {
+) -> (RegexDFA, Trie, ParseTable, Vec<bool>) {
+    let mut trie = Trie(vec![TrieNode {
         fin: None,
         children: [None; 256],
     }]);
@@ -250,7 +250,7 @@ pub fn process_productions(
                 .unwrap_or("<Update>")
         )
     };
-    let parser = match DynParseTable::from_rules(rules, error_ids) {
+    let parser = match ParseTable::from_rules(rules, error_ids) {
         Err(conflicts) => {
             for conflict in conflicts {
                 match conflict {
@@ -263,5 +263,5 @@ pub fn process_productions(
         Ok(parser) => parser,
     };
 
-    (regex, trie, parser, production_ids.len() + 1, is_token) // + 1 for eof
+    (regex, trie, parser, is_token) // + 1 for eof
 }

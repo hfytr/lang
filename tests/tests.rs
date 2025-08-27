@@ -18,5 +18,4 @@ fn avl_tree() {
     }
     nodes.verify();
     eprintln!("{nodes}");
-    panic!();
 }

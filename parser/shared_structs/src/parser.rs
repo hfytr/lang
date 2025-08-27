@@ -49,23 +49,26 @@ impl ToTokens for ParseAction {
 }
 
 #[derive(Debug)]
-pub struct ParseTable<const NUM_RULES: usize, const NUM_STATES: usize, const NUM_TOKENS: usize> {
-    pub actions: [[ParseAction; NUM_TOKENS]; NUM_STATES],
-    pub rule_lens: [(usize, usize); NUM_RULES],
-    pub errors: [Option<(usize, usize)>; NUM_STATES],
-    pub reductions: [[bool; NUM_TOKENS]; NUM_TOKENS],
+pub struct ParseTable {
+    pub actions: Vec<Vec<ParseAction>>,
+    pub errors: Vec<Option<(usize, usize)>>,
+    pub reductions: Vec<Vec<bool>>,
+    pub rule_lens: Vec<(usize, usize)>,
 }
 
-impl<const NUM_RULES: usize, const NUM_STATES: usize, const NUM_TOKENS: usize>
-    ParseTable<NUM_RULES, NUM_STATES, NUM_TOKENS>
-{
+pub enum Conflict {
+    RR(usize, usize, usize),
+    SR(usize, usize, usize),
+}
+
+impl ParseTable {
     pub fn from_raw(
-        actions_raw: [[(usize, usize); NUM_TOKENS]; NUM_STATES],
-        rule_lens: [(usize, usize); NUM_RULES],
-        errors: [Option<(usize, usize)>; NUM_STATES],
-        reductions: [[bool; NUM_TOKENS]; NUM_TOKENS],
+        actions_raw: Vec<Vec<(usize, usize)>>,
+        rule_lens: Vec<(usize, usize)>,
+        errors: Vec<Option<(usize, usize)>>,
+        reductions: Vec<Vec<bool>>,
     ) -> Result<Self, &'static str> {
-        let mut actions = [[ParseAction::Invalid; NUM_TOKENS]; NUM_STATES];
+        let mut actions = vec![vec![ParseAction::Invalid; actions_raw[0].len()]; actions_raw.len()];
         for (i, state_actions) in actions_raw.into_iter().enumerate() {
             for (j, (action_type, value)) in state_actions.into_iter().enumerate() {
                 actions[i][j] = match action_type {
@@ -84,22 +87,7 @@ impl<const NUM_RULES: usize, const NUM_STATES: usize, const NUM_TOKENS: usize>
             reductions,
         })
     }
-}
 
-#[derive(Debug)]
-pub struct DynParseTable {
-    pub actions: Vec<Vec<ParseAction>>,
-    errors: Vec<Option<(usize, usize)>>,
-    reductions: Vec<Vec<bool>>,
-    pub rule_lens: Vec<(usize, usize)>,
-}
-
-pub enum Conflict {
-    RR(usize, usize, usize),
-    SR(usize, usize, usize),
-}
-
-impl DynParseTable {
     pub fn from_rules(
         rules: Vec<Vec<Vec<usize>>>,
         error_callbacks: Vec<Option<usize>>,
@@ -181,7 +169,7 @@ impl DynParseTable {
     }
 }
 
-impl ToTokens for DynParseTable {
+impl ToTokens for ParseTable {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         fn quote_2d<T: ToTokens>(a: &Vec<Vec<T>>) -> TokenStream {
             let mut result_inner = TokenStream::new();
@@ -189,16 +177,16 @@ impl ToTokens for DynParseTable {
                 a.iter().map(|v| {
                     let mut row_inner = TokenStream::new();
                     row_inner.append_separated(v.iter(), Punct::new(',', Spacing::Alone));
-                    quote! { [#row_inner] }
+                    quote! { vec![#row_inner] }
                 }),
                 Punct::new(',', Spacing::Alone),
             );
-            quote! { [#result_inner] }
+            quote! { vec![#result_inner] }
         }
         fn quote_1d<T, F: Fn(&T) -> TokenStream>(v: &Vec<T>, f: F) -> TokenStream {
             let mut result_inner = TokenStream::new();
             result_inner.append_separated(v.iter().map(f), Punct::new(',', Spacing::Alone));
-            quote! { [#result_inner] }
+            quote! { vec![#result_inner] }
         }
         let actions = quote_2d(&self.actions);
         let reductions = quote_2d(&self.reductions);
