@@ -5,4 +5,4 @@ edition = "2024"
 
 [dependencies]
 backtrace-on-stack-overflow = "0.3.0"
-parser = { path = "parser", features = [] }
+lr_rust = "0.1.1"

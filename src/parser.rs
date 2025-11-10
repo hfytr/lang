@@ -185,7 +185,7 @@ fn make_binop(
     }
 }
 
-parser::parser! {
+lr_rust::parser! {
     State(ParseState),
     Output(usize),
     Kind(pub NodeKind),
