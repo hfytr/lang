@@ -93,8 +93,6 @@ checksum = "6a82ae493e598baaea5209805c49bbf2ea7de956d50d7da0da1164f9c6d28543"
 [[package]]
 name = "lr_rust"
 version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8c70b46807fe56f601b18d587186d510c5ce230042780d44445f51d9b4c404b4"
 dependencies = [
  "lr_rust_parsing_macro",
  "lr_rust_shared_structs",
@@ -103,8 +101,6 @@ dependencies = [
 [[package]]
 name = "lr_rust_parsing_macro"
 version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1bafb2695987a786b41f4687346577e3db090993f9afdbe0300417ab7a1ade9"
 dependencies = [
  "lr_rust_shared_structs",
  "proc-macro2",
@@ -115,8 +111,6 @@ dependencies = [
 [[package]]
 name = "lr_rust_shared_structs"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f73c96a67edc1feafa4b1637d2f2d05e3d07e4d065565348c4bbf47938e52d44"
 dependencies = [
  "proc-macro2",
  "quote",

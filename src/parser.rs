@@ -190,117 +190,211 @@ lr_rust::parser! {
     Output(usize),
     Kind(pub NodeKind),
     GeneratedFn(pub make_parser),
+
     _ => Regex("[ \t]*" |state: &mut ParseState, text: &str| {state.col += text.len(); None}),
     _ => Regex("#=([^=]|=[^#])*=#" |_, _| { None }),
     _ => Regex("#[^\\n]*" |state: &mut ParseState, text: &str| {state.col += text.len(); None}),
 
-    ExprList => Rule(
-        Expr,
-        TermL,
-        TermL ExprList |_, _, elist| elist,
-        Expr TermL ExprList |state, e, _, elist| expr_list(state, e, elist)
-        Expr TermL |_, e, _| e
-    ),
+TranslationUnit => Rule(
+    TopLevelDecl,
+    TranslationUnit TopLevelDecl |state, tu, td| make_binary(state, tu, td, TranslationUnit)
+),
 
-    Expr => Rule(IdentifierL),
+TopLevelDecl => Rule(
+    Decl,
+    FunctionDefSpec CompoundStmt |state, fs, cs| make_binary(state, fs, cs, FunctionDefinition)
+),
 
-    AssignExpr => Rule(
-        PairExpr,
-        PairExpr AssignOp AssignExpr |state, e, _, elist| make_binop(state, e, elist, NodeKind::AssignExpr)
-    ),
-    AssignOp => Rule(
-        EqL, DivEqL, ModEqL, AndEqL, OrEqL, MulEqL, LShiftEqL, RShiftEqL, ULShiftEqL, URShiftEqL,
-        RevDivEqL, AddEqL, SubEqL, BNotEqL, ExpEqL,
-    ),
+Decl => Rule(
+    BaseType DecltrList SemicolonL |state, bt, dl, _| make_binary(state, bt, dl, Declaration),
+    SemicolonL |state, _| make_nullary(state, EmptyDeclaration)
+),
 
-    PairExpr => Rule(
-        QuestionExpr,
-        QuestionExpr PairL PairExpr |state, e, _, elist| make_binop(state, e, elist, NodeKind::PairExpr)
-    ),
+FunctionDefSpec => Rule(BaseType Decltr |state, bt, d| make_binary(state, bt, d, FunctionDefSpec)),
 
-    QuestionExpr => Rule(
-        LOrExpr,
-        LOrExpr QuestionL QuestionExpr |state, e, _, elist| make_binop(state, e, elist, NodeKind::QuestionExpr)
-    ),
+DecltrList => Rule(
+    Decltr,
+    DecltrList CommaL Decltr |state, dl, _, d| make_ternary(state, dl, d, DecltrList)
+),
 
-    LOrExpr => Rule(
-        LAndExpr,
-        LAndExpr LOrL LOrExpr |state, e, _, elist| make_binop(state, e, elist, NodeKind::LOrExpr)
-    ),
+Decltr => Rule(
+    DirectDecltr,
+    MulL Decltr |state, _, d| make_unary(state, d, PointerDecltr)
+),
 
-    LAndExpr => Rule(
-        CompareExpr,
-        CompareExpr LAndL LAndExpr |state, e, _, elist| make_binop(state, e, elist, NodeKind::LAndExpr)
-    ),
+DirectDecltr => Rule(
+    FunctionDecltr,
+    IdentifierL |state, id| make_unary(state, id, IdentifierDecltr),
+    LParenL Decltr RParenL |state, _, d, _| make_unary(state, d, ParenDecltr),
+    DirectDecltr LSquareL RSquareL |state, dd, _, _| make_unary(state, dd, ArrayDecltr),
+    DirectDecltr LSquareL ConditionalExpr RSquareL |state, dd, _, ce, _| make_binary(state, dd, ce, ArrayDecltr)
+),
 
-    CompareExpr => Rule(
-        PipeLeftExpr,
-        PipeLeftExpr CompareOp CompareExpr |state, e, _, elist| make_binop(state, e, elist, NodeKind::CompareExpr)
-    ),
-    CompareOp => Rule(
-        TripleEqL, NotTripleEqL, DoubleEqL, NotEqL, MoreEqL, LessEqL, MoreL, LessL, SubTypeL,
-        SupTypeL, InL, IsAL
-    ),
+FunctionDecltr => Rule(
+    IdentifierL LParenL Params RParenL |state, id, _, p, _| make_binary(state, id, p, FunctionDecltr)
+),
 
-    PipeLeftExpr => Rule(
-        PipeRightExpr,
-        PipeRightExpr PipeLeftL PipeLeftExpr |state, e, _, elist| make_binop(state, e, elist, NodeKind::PipeLeftExpr)
-    ),
+Params => Rule(
+    ParamDecl,
+    VoidL |state, _| make_nullary(state, VoidParams),
+    Params CommaL ParamDecl |state, ps, _, pd| make_ternary(state, ps, pd, Params)
+),
 
-    PipeRightExpr => Rule(
-        ColonExpr,
-        ColonExpr PipeRightL PipeRightExpr |state, e, _, elist| make_binop(state, e, elist, NodeKind::PipeRightExpr)
-    ),
+ParamDecl => Rule(BaseType Decltr |state, bt, d| make_binary(state, bt, d, ParamDecl)),
 
-    ColonExpr => Rule(
-        AddExpr,
-        AddExpr ColonL ColonExpr |state, e, _, elist| make_binop(state, e, elist, NodeKind::ColonExpr)
-    ),
+AbstractType => Rule(
+    PtrType,
+),
 
-    AddExpr => Rule(
-        MulExpr,
-        MulExpr AddOp AddExpr |state, e, _, elist| make_binop(state, e, elist, NodeKind::AddExpr)
-    ),
-    AddOp => Rule(AddL, SubL, OrL),
+PtrType => Rule(
+    BaseType,
+    PtrType MulL |state, pt, _| make_unary(state, pt, PointerType)
+),
 
-    MulExpr => Rule(
-        IdentifierL,
-        IdentifierL MulOp MulExpr |state, e, _, elist| make_binop(state, e, elist, NodeKind::MulExpr)
-    ),
-    MulOp => Rule(DivL, ModL, AndL, MulL, RevDivL),
+Expr => Rule(PostfixExpr),
+CommaExpr => Rule(
+    AssignExpr,
+    CommaExpr CommaL AssignExpr |state, ce, _, ae| make_ternary(state, ce, ae, CommaExpr)
+),
 
-    RationalExpr => Rule(
-        ShiftExpr,
-        ShiftExpr RationalL RationalExpr |state, e, _, elist| make_binop(state, e, elist, NodeKind::RationalExpr)
-    ),
+AssignOp => Rule(EqL, AddEqL, SubEqL, MulEqL, DivEqL, RemEqL, LShiftEqL, RShiftEqL, AndEqL, XorEqL, OrEqL),
+AssignExpr => Rule(
+    ConditionalExpr,
+    UnaryExpr AssignOp AssignExpr |state, ue, ao, ae| make_ternary(state, ue, ao, ae)
+),
 
-    ShiftExpr => Rule(
-        PowExpr,
-        PowExpr ShiftOp ShiftExpr |state, e, _, elist| make_binop(state, e, elist, NodeKind::ShiftExpr)
-    ),
-    ShiftOp => Rule(LShiftL, RShiftL, URShiftL),
+ConditionalExpr => Rule(
+    LogicalOrExpr,
+    LogicalOrExpr QuestionL CommaExpr ColonL ConditionalExpr |state, loe, _, ce, _, cond| make_ternary(state, loe, ce, cond, ConditionalExpr)
+),
 
-    PowExpr => Rule(
-        DColonExpr,
-        DColonExpr PowL PowExpr |state, e, _, elist| make_binop(state, e, elist, NodeKind::PowExpr)
-    ),
+LogicalOrExpr => Rule(
+    LogicalAndExpr,
+    LogicalOrExpr DoubleOrL LogicalAndExpr |state, loe, op, lae| make_ternary(state, loe, op, lae)
+),
 
-    DColonExpr => Rule(
-        BaseExpr,
-        BaseExpr DColonL DColonExpr |state, e, _, elist| make_binop(state, e, elist, NodeKind::DColonExpr)
-    ),
+LogicalAndExpr => Rule(
+    BitwiseOrExpr,
+    LogicalAndExpr DoubleAndL BitwiseOrExpr |state, lae, op, boe| make_ternary(state, lae, op, boe)
+),
 
-    BaseExpr => Rule(
-        IdentifierL,
-        UIntLitL,
-        IntLitL,
-        FloatLitL,
-        StrLitL, 
-        LParenL Expr RParenL |state: &mut ParseState, lp: usize, expr, rp| {
-            state.ast[expr].span = state.ast[lp].span.merge(&state.ast[rp].span);
-            expr
-        }
-    ),
+BitwiseOrExpr => Rule(
+    BitwiseXorExpr,
+    BitwiseOrExpr OrL BitwiseXorExpr |state, boe, op, bxe| make_ternary(state, boe, op, bxe)
+),
+
+BitwiseXorExpr => Rule(
+    BitwiseAndExpr,
+    BitwiseXorExpr XorL BitwiseAndExpr |state, bxe, op, bae| make_ternary(state, bxe, op, bae)
+),
+
+BitwiseAndExpr => Rule(
+    EqualityExpr,
+    BitwiseAndExpr AndL EqualityExpr |state, bae, op, ee| make_ternary(state, bae, op, ee)
+),
+
+EqualityOp => Rule(DoubleEqL, NotEqL),
+EqualityExpr => Rule(
+    RelationalExpr,
+    EqualityExpr EqualityOp RelationalExpr |state, ee, op, re| make_ternary(state, ee, op, re)
+),
+
+RelationalOp => Rule(LessL, GreaterL, LessEqL, GreaterEqL),
+RelationalExpr => Rule(
+    ShiftExpr,
+    RelationalExpr RelationalOp ShiftExpr |state, re, op, se| make_ternary(state, re, op, se)
+),
+
+ShiftOp => Rule(LShiftL, RShiftL),
+ShiftExpr => Rule(
+    AddExpr,
+    ShiftExpr ShiftOp AddExpr |state, se, op, ae| make_ternary(state, se, op, ae)
+),
+
+AddOp => Rule(AddL, SubL),
+AddExpr => Rule(
+    MulExpr,
+    AddExpr AddOp MulExpr |state, ae, op, me| make_ternary(state, ae, op, me)
+),
+
+MulOp => Rule(MulL, DivL, RemL),
+MulExpr => Rule(
+    CastExpr,
+    MulExpr MulOp CastExpr |state, me, op, ce| make_ternary(state, me, op, ce)
+),
+
+CastExpr => Rule(
+    UnaryExpr,
+    LParenL AbstractType RParenL CastExpr |state, _, at, _, ce| make_binary(state, at, ce, CastExpr)
+),
+
+UnaryExpr => Rule(
+    PostfixExpr,
+    SubL CastExpr |state, _, ce| make_unary(state, ce, NegExpr),
+    AddL CastExpr |state, _, ce| make_unary(state, ce, PosExpr),
+    BangL CastExpr |state, _, ce| make_unary(state, ce, NotExpr),
+    TildeL CastExpr |state, _, ce| make_unary(state, ce, BitwiseNotExpr),
+    AndL CastExpr |state, _, ce| make_unary(state, ce, AddrOfExpr),
+    MulL CastExpr |state, _, ce| make_unary(state, ce, DerefExpr),
+    PPlusL UnaryExpr |state, _, ue| make_unary(state, ue, PreIncExpr),
+    MMinusL UnaryExpr |state, _, ue| make_unary(state, ue, PreDecExpr)
+),
+
+PostfixExpr => Rule(
+    PrimaryExpr,
+    PostfixExpr LSquareL Expr RSquareL |state, pe, _, ce, _| make_binary(state, pe, ce, SubscriptExpr),
+    PostfixExpr LParenL ExpressionList RParenL |state, pe, _, el, _| make_binary(state, pe, el, CallExpr),
+    PostfixExpr LParenL RParenL |state, pe, _, _| make_unary(state, pe, CallExpr),
+    PostfixExpr PPlusL |state, pe, _| make_unary(state, pe, PostIncExpr),
+    PostfixExpr MMinusL |state, pe, _| make_unary(state, pe, PostDecExpr)
+),
+
+PrimaryExpr => Rule(
+    IdentifierL, IntLitL, StrLitL,
+    LParenL Expr RParenL |_, _, e, _| e
+),
+
+ExpressionList => Rule(
+    Expr,
+    ExpressionList CommaL Expr |state, el, _, ae| make_ternary(state, el, ae, ExpressionList)
+),
+
+CompoundStmt => Rule(
+    LCurlL RCurlL |state, _, _| make_nullary(state, EmptyCompoundStmt),
+    LCurlL DeclOrStmtList RCurlL |state, _, dsl, _| make_unary(state, dsl, CompoundStmt)
+),
+
+DeclOrStmtList => Rule(
+    Decl,
+    Stmt,
+    DeclOrStmtList Decl |state, dsl, d| make_binary(state, dsl, d, DeclOrStmtList),
+    DeclOrStmtList Stmt |state, dsl, s| make_binary(state, dsl, s, DeclOrStmtList)
+),
+
+ElseStmt, ElseIfStmt,
+IfChain => Rule(
+    ElseL IfL CommaExpr CompoundStmt |state, _, _, ce, cs| make_ternary(state, ce, cs, None, ElseIfStmt),
+    ElseL CommaExpr CompoundStmt |state, _, _, ce, cs| make_ternary(state, ce, cs, None, ElseStmt),
+    ElseL IfL CommaExpr CompoundStmt IfChain |state, _, _, ce, cs, ic| make_ternary(state, ce, cs, ic, ElseIfStmt),
+    ElseL CommaExpr CompoundStmt IfChain |state, _, _, ce, cs, ic| make_ternary(state, ce, cs, ic, ElseStmt),
+),
+
+ForStmtElem => Rule(CommaExpr SemicolonL |_, ce, _| ce),
+Stmt => Rule(
+    CompoundStmt,
+    IfChain,
+    WhileL CommaExpr CompoundStmt |state, _, ce, s| make_binary(state, ce, s, WhileStmt),
+    CommaExpr SemicolonL |state, ce, _| make_unary(state, ce, ExprStmt),
+    IdentifierL ColonL Stmt |state, id, _, s| make_binary(state, id, s, LabelStmt),
+    ForL ForStmtElem ForStmtElem ForStmtElem CompoundStmt |state, _, e1, e2, e3, s| make_ternary(state, e1, e2, e3, s, ForStmt),
+    BreakL SemicolonL |state, _, _| make_nullary(state, BreakStmt),
+    ContinueL SemicolonL |state, _, _| make_nullary(state, ContinueStmt),
+    ReturnL CommaExpr SemicolonL |state, _, ce, _| make_unary(state, ce, ReturnStmt),
+    ReturnL SemicolonL |state, _, _| make_nullary(state, ReturnVoidStmt),
+    GotoL IdentifierL SemicolonL |state, _, id, _| make_unary(state, id, GotoStmt)
+),
+
+BaseType => Rule(U64L, U32L, U16L, I64L, I32L, I16L, F64L, F32L),
 
     IdentifierL => Regex("[a-zA-Z_][a-zA-Z0-9_]*" |state: &mut ParseState, text: &str| {
         let start = (state.line, state.col);
@@ -323,106 +417,84 @@ lr_rust::parser! {
     StrLitL => Regex("\"([^\"]|\\\\\")*\"" |state, text: &str| str_lit(state, &text[1..text.len()-1])),
     StrLitL => Regex("\"\"\"([^\"]|\"[^\"]|\"\"[^\"])*\"\"\"" |state, text: &str| str_lit(state, &text[3..text.len()-3])),
 
-    FunctionL => Literal("function" |state, text| make_lit(state, text, NodeKind::FunctionL)),
-    BeginL => Literal("begin" |state, text| make_lit(state, text, NodeKind::BeginL)),
-    EndL => Literal("end" |state, text| make_lit(state, text, NodeKind::EndL)),
-    IfL => Literal("if" |state, text| make_lit(state, text, NodeKind::IfL)),
-    ElseL => Literal("else" |state, text| make_lit(state, text, NodeKind::ElseL)),
-    ElseIfL => Literal("elseif" |state, text| make_lit(state, text, NodeKind::ElseIfL)),
-    ForL => Literal("for" |state, text| make_lit(state, text, NodeKind::ForL)),
-    InL => Literal("in" |state, text| make_lit(state, text, NodeKind::InL)),
-    IsAL => Literal("isa" |state, text| make_lit(state, text, NodeKind::IsAL)),
-    ModuleL => Literal("module" |state, text| make_lit(state, text, NodeKind::ModuleL)),
-    StructL => Literal("struct" |state, text| make_lit(state, text, NodeKind::StructL)),
-    MutableL => Literal("mutable" |state, text| make_lit(state, text, NodeKind::MutableL)),
-    WhileL => Literal("while" |state, text| make_lit(state, text, NodeKind::WhileL)),
-    BreakL => Literal("break" |state, text| make_lit(state, text, NodeKind::BreakL)),
-    ContinueL => Literal("continue" |state, text| make_lit(state, text, NodeKind::ContinueL)),
-    ReturnL => Literal("return" |state, text| make_lit(state, text, NodeKind::ReturnL)),
-    TrueL => Literal("true" |state, text| make_lit(state, text, NodeKind::TrueL)),
-    FalseL => Literal("false" |state, text| make_lit(state, text, NodeKind::FalseL)),
-    NothingL => Literal("nothing" |state, text| make_lit(state, text, NodeKind::NothingL)),
-    ConstL => Literal("const" |state, text| make_lit(state, text, NodeKind::ConstL)),
-    GlobalL => Literal("global" |state, text| make_lit(state, text, NodeKind::GlobalL)),
-    LocalL => Literal("local" |state, text| make_lit(state, text, NodeKind::LocalL)),
-
-    LParenL => Literal("(" |state, _| make_bracket(state, true, NodeKind::LParenL)),
-    RParenL => Literal(")" |state, _| make_bracket(state, false, NodeKind::RParenL)),
-    LCurlL => Literal("{" |state, _| make_bracket(state, true, NodeKind::LCurlL)),
-    RCurlL => Literal("}" |state, _| make_bracket(state, false, NodeKind::RCurlL)),
-    LSquareL => Literal("[" |state, _| make_bracket(state, true, NodeKind::LSquareL)),
-    RSquareL => Literal("]" |state, _| make_bracket(state, false, NodeKind::RSquareL)),
-
-    CommaL => Literal("," |state, text| make_lit(state, text, NodeKind::CommaL)),
-    TermL => Literal(";" |state, text| make_lit(state, text, NodeKind::TermL)),
-    TermL => Literal("\n" |state: &mut ParseState, _| new_line(state)),
-
-    PairL => Literal("=>" |state, text| make_lit(state, text, NodeKind::PairL)),
-
-    LArrowL => Literal("<-" |state, text| make_lit(state, text, NodeKind::LArrowL)),
-    RArrowL => Literal("->" |state, text| make_lit(state, text, NodeKind::RArrowL)),
-
-    LAndL => Literal("&&" |state, text| make_lit(state, text, NodeKind::LAndL)),
-    LOrL => Literal("||" |state, text| make_lit(state, text, NodeKind::LOrL)),
-
-    PipeLeftL => Literal("<|" |state, text| make_lit(state, text, NodeKind::PipeLeftL)),
-    PipeRightL => Literal("|>" |state, text| make_lit(state, text, NodeKind::PipeRightL)),
-
-    PowL => Literal("^" |state, text| make_lit(state, text, NodeKind::PowL)),
-
-    DivL => Literal("/" |state, text| make_lit(state, text, NodeKind::DivL)),
-    ModL => Literal("÷" |state, text| make_lit(state, text, NodeKind::ModL)),
-    ModL => Literal("%" |state, text| make_lit(state, text, NodeKind::ModL)),
+    BangL => Literal("!" |state, text| make_lit(state, text, NodeKind::BangL)),
+    RemL => Literal("%" |state, text| make_lit(state, text, NodeKind::RemL)),
+    XorL => Literal("^" |state, text| make_lit(state, text, NodeKind::XorL)),
     AndL => Literal("&" |state, text| make_lit(state, text, NodeKind::AndL)),
-    MulL => Literal("⋅" |state, text| make_lit(state, text, NodeKind::MulL)),
     MulL => Literal("*" |state, text| make_lit(state, text, NodeKind::MulL)),
-
-    OrL => Literal("|" |state, text| make_lit(state, text, NodeKind::OrL)),
-    AddL => Literal("+" |state, text| make_lit(state, text, NodeKind::AddL)),
     SubL => Literal("-" |state, text| make_lit(state, text, NodeKind::SubL)),
-
+    AddL => Literal("+" |state, text| make_lit(state, text, NodeKind::AddL)),
+    EqL => Literal("=" |state, text| make_lit(state, text, NodeKind::EqL)),
+    TildeL => Literal("~" |state, text| make_lit(state, text, NodeKind::TildeL)),
+    OrL => Literal("|" |state, text| make_lit(state, text, NodeKind::OrL)),
+    DivL => Literal("/" |state, text| make_lit(state, text, NodeKind::DivL)),
+    QuestionL => Literal("?" |state, text| make_lit(state, text, NodeKind::QuestionL)),
     LShiftL => Literal("<<" |state, text| make_lit(state, text, NodeKind::LShiftL)),
     RShiftL => Literal(">>" |state, text| make_lit(state, text, NodeKind::RShiftL)),
-    URShiftL => Literal(">>>" |state, text| make_lit(state, text, NodeKind::URShiftL)),
-    RevDivL => Literal("\\\\" |state, text| make_lit(state, text, NodeKind::RevDivL)),
 
-    RationalL => Literal("//" |state, text| make_lit(state, text, NodeKind::RationalL)),
-
-    BNotL => Literal("~" |state, text| make_lit(state, text, NodeKind::BNotL)),
-
-    EqL => Literal("=" |state, text| make_lit(state, text, NodeKind::EqL)),
-    DivEqL => Literal("/=" |state, text| make_lit(state, text, NodeKind::DivEqL)),
-    ModEqL => Literal("÷=" |state, text| make_lit(state, text, NodeKind::ModEqL)),
-    ModEqL => Literal("%=" |state, text| make_lit(state, text, NodeKind::ModEqL)),
-    AndEqL => Literal("&=" |state, text| make_lit(state, text, NodeKind::AndEqL)),
-    OrEqL => Literal("|=" |state, text| make_lit(state, text, NodeKind::OrEqL)),
-    MulEqL => Literal("⋅=" |state, text| make_lit(state, text, NodeKind::MulEqL)),
-    MulEqL => Literal("*=" |state, text| make_lit(state, text, NodeKind::MulEqL)),
-    LShiftEqL => Literal("<<=" |state, text| make_lit(state, text, NodeKind::LShiftEqL)),
-    RShiftEqL => Literal(">>=" |state, text| make_lit(state, text, NodeKind::RShiftEqL)),
-    ULShiftEqL => Literal("<<<=" |state, text| make_lit(state, text, NodeKind::ULShiftEqL)),
-    URShiftEqL => Literal(">>>=" |state, text| make_lit(state, text, NodeKind::URShiftEqL)),
-    RevDivEqL => Literal("\\=" |state, text| make_lit(state, text, NodeKind::RevDivEqL)),
     AddEqL => Literal("+=" |state, text| make_lit(state, text, NodeKind::AddEqL)),
     SubEqL => Literal("-=" |state, text| make_lit(state, text, NodeKind::SubEqL)),
-    BNotEqL => Literal("~=" |state, text| make_lit(state, text, NodeKind::BNotEqL)),
-    ExpEqL => Literal("^=" |state, text| make_lit(state, text, NodeKind::ExpEqL)),
+    MulEqL => Literal("*=" |state, text| make_lit(state, text, NodeKind::MulEqL)),
+    DivEqL => Literal("/=" |state, text| make_lit(state, text, NodeKind::DivEqL)),
+    RemEqL => Literal("%=" |state, text| make_lit(state, text, NodeKind::RemEqL)),
+    LShiftEqL => Literal("<<=" |state, text| make_lit(state, text, NodeKind::LShiftEqL)),
+    RShiftEqL => Literal(">>=" |state, text| make_lit(state, text, NodeKind::RShiftEqL)),
+    AndEqL => Literal("&=" |state, text| make_lit(state, text, NodeKind::AndEqL)),
+    XorEqL => Literal("^=" |state, text| make_lit(state, text, NodeKind::XorEqL)),
+    OrEqL => Literal("|=" |state, text| make_lit(state, text, NodeKind::OrEqL)),
+    PPlusL => Literal("++" |state, text| make_lit(state, text, NodeKind::PPlusL)),
+    MMinusL => Literal("--" |state, text| make_lit(state, text, NodeKind::MMinusL)),
 
-    TripleEqL => Literal("===" |state, text| make_lit(state, text, NodeKind::TripleEqL)),
-    NotTripleEqL => Literal("!==" |state, text| make_lit(state, text, NodeKind::NotTripleEqL)),
+    LessL => Literal("<" |state, text| make_lit(state, text, NodeKind::LessL)),
+    GreaterL => Literal(">" |state, text| make_lit(state, text, NodeKind::GreaterL)),
+    LessEqL => Literal("<=" |state, text| make_lit(state, text, NodeKind::LessEqL)),
+    GreaterEqL => Literal(">=" |state, text| make_lit(state, text, NodeKind::GreaterEqL)),
     DoubleEqL => Literal("==" |state, text| make_lit(state, text, NodeKind::DoubleEqL)),
     NotEqL => Literal("!=" |state, text| make_lit(state, text, NodeKind::NotEqL)),
-    MoreEqL => Literal(">=" |state, text| make_lit(state, text, NodeKind::MoreEqL)),
-    LessEqL => Literal("<=" |state, text| make_lit(state, text, NodeKind::LessEqL)),
-    MoreL => Literal(">" |state, text| make_lit(state, text, NodeKind::MoreL)),
-    LessL => Literal("<" |state, text| make_lit(state, text, NodeKind::LessL)),
-    SubTypeL => Literal("<:" |state, text| make_lit(state, text, NodeKind::SubTypeL)),
-    SupTypeL => Literal(":>" |state, text| make_lit(state, text, NodeKind::SupTypeL)),
+    DoubleAndL => Literal("&&" |state, text| make_lit(state, text, NodeKind::DoubleAndL)),
+    DoubleOrL => Literal("||" |state, text| make_lit(state, text, NodeKind::DoubleOrL)),
 
+    NewLineL,
+    LParenL => Literal("(" |state, text| make_lit(state, text, NodeKind::LParenL)),
+    RParenL => Literal(")" |state, text| make_lit(state, text, NodeKind::RParenL)),
+    LSquareL => Literal("[" |state, text| make_lit(state, text, NodeKind::LSquareL)),
+    RSquareL => Literal("]" |state, text| make_lit(state, text, NodeKind::RSquareL)),
+    LCurlL => Literal("{" |state, text| make_lit(state, text, NodeKind::LCurlL)),
+    RCurlL => Literal("}" |state, text| make_lit(state, text, NodeKind::RCurlL)),
+
+    DotL => Literal("." |state, text| make_lit(state, text, NodeKind::DotL)),
+    RArrowL => Literal("->" |state, text| make_lit(state, text, NodeKind::RArrowL)),
+    CommaL => Literal("," |state, text| make_lit(state, text, NodeKind::CommaL)),
+    SemicolonL => Literal(";" |state, text| make_lit(state, text, NodeKind::SemicolonL)),
     ColonL => Literal(":" |state, text| make_lit(state, text, NodeKind::ColonL)),
-    DColonL => Literal("::" |state, text| make_lit(state, text, NodeKind::DColonL)),
-    QuestionL => Literal("?" |state, text| make_lit(state, text, NodeKind::QuestionL)),
-    DollarL => Literal("$" |state, text| make_lit(state, text, NodeKind::DollarL)),
-    AtL => Literal("@" |state, text| make_lit(state, text, NodeKind::AtL)),
-    SplatL => Literal("..." |state, text| make_lit(state, text, NodeKind::SplatL)),
+
+    ForL => Literal("for" |state, text| make_lit(state, text, NodeKind::ForL)),
+    ReturnL => Literal("return" |state, text| make_lit(state, text, NodeKind::ReturnL)),
+    BreakL => Literal("break" |state, text| make_lit(state, text, NodeKind::BreakL)),
+    ShortL => Literal("short" |state, text| make_lit(state, text, NodeKind::ShortL)),
+    ElseL => Literal("else" |state, text| make_lit(state, text, NodeKind::ElseL)),
+    GotoL => Literal("goto" |state, text| make_lit(state, text, NodeKind::GotoL)),
+    IfL => Literal("if" |state, text| make_lit(state, text, NodeKind::IfL)),
+    VoidL => Literal("void" |state, text| make_lit(state, text, NodeKind::VoidL)),
+    ContinueL => Literal("continue" |state, text| make_lit(state, text, NodeKind::ContinueL)),
+    WhileL => Literal("while" |state, text| make_lit(state, text, NodeKind::WhileL)),
+    SizeofL => Literal("sizeof" |state, text| make_lit(state, text, NodeKind::SizeofL)),
+    CaseL => Literal("case" |state, text| make_lit(state, text, NodeKind::CaseL)),
+    DefaultL => Literal("default" |state, text| make_lit(state, text, NodeKind::DefaultL)),
+    SwitchL => Literal("switch" |state, text| make_lit(state, text, NodeKind::SwitchL)),
+
+    MutL => Literal("mut" |state, text| make_lit(state, text, NodeKind::MutL)),
+    ImmutL => Literal("immut" |state, text| make_lit(state, text, NodeKind::ImmutL)),
+    ConstL => Literal("const" |state, text| make_lit(state, text, NodeKind::ConstL)),
+    StructL => Literal("struct" |state, text| make_lit(state, text, NodeKind::StructL)),
+    UnionL => Literal("union" |state, text| make_lit(state, text, NodeKind::UnionL)),
+
+    U64L => Literal("u64" |state, text| make_lit(state, text, NodeKind::U64L)),
+    U32L => Literal("u32" |state, text| make_lit(state, text, NodeKind::U32L)),
+    U16L => Literal("u16" |state, text| make_lit(state, text, NodeKind::U16L)),
+    I64L => Literal("i64" |state, text| make_lit(state, text, NodeKind::I64L)),
+    I32L => Literal("i32" |state, text| make_lit(state, text, NodeKind::I32L)),
+    I16L => Literal("i16" |state, text| make_lit(state, text, NodeKind::I16L)),
+    F64L => Literal("f64" |state, text| make_lit(state, text, NodeKind::F64L)),
+    F32L => Literal("f32" |state, text| make_lit(state, text, NodeKind::F32L)),
 }
